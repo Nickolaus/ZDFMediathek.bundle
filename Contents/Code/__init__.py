@@ -23,8 +23,6 @@
 # - Support Bilderserien
 
 from PMS import *
-from PMS.Objects import *
-from PMS.Shortcuts import *
 
 ####################################################################################################
 
@@ -74,6 +72,8 @@ def Start():
     MediaContainer.art = R(ART)
     MediaContainer.title1 = NAME
     DirectoryItem.thumb = R(ICON)
+
+    HTTP.SetCacheTime(3600)
 
 def VideoMainMenu():
     dir = MediaContainer(viewGroup="List")
