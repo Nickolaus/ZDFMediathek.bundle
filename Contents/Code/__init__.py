@@ -1,9 +1,9 @@
 # +++++ ZDF Mediathek Plugin for Plex +++++
 #
-# Version 1.0
+# Version 1.1
 #
-# (c) 2010 by Marcel Dischinger (http://www.digital-tea.net)
-# Initial version based on code by Sebastian Majstorovic
+# (c) 2011 by Robert Kleinschmager (http://www.kleinschmager.net)
+# Initial version based on code by Sebastian Majstorovic and Marcel Dischinger (http://www.digital-tea.net)
 # 
 # Licensed under the GPL, Version 3.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@
 # - Support Bilderserien
 
 from PMS import *
+from PMS.Objects import *
+from PMS.Shortcuts import *
 
 ####################################################################################################
 
@@ -73,8 +75,6 @@ def Start():
     MediaContainer.title1 = NAME
     DirectoryItem.thumb = R(ICON)
 
-    HTTP.SetCacheTime(3600)
-
 def VideoMainMenu():
     dir = MediaContainer(viewGroup="List")
 
@@ -83,12 +83,12 @@ def VideoMainMenu():
     for show in SHOWS :
       show[1] = show[1] + "&teaserListIndex="+str(MAX_ENTRIES*2)
       if(len(show) > 2 and show[2] != '') :
-	if((len(show) > 3) and (show[3] != '')) :
-	  dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2]), art = R(show[3])), arg = show[1]))
-	else :
-	  dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2])), arg = show[1]))
+  if((len(show) > 3) and (show[3] != '')) :
+    dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2]), art = R(show[3])), arg = show[1]))
+  else :
+    dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2])), arg = show[1]))
       else :
-	dir.Append(Function(DirectoryItem(DateMenu, title = show[0]), arg = show[1]))
+  dir.Append(Function(DirectoryItem(DateMenu, title = show[0]), arg = show[1]))
 
     return dir
 
@@ -182,7 +182,7 @@ def DateMenu(sender, arg):
     # (we could support Bilderserien in the future)
     if(('bilderserie' in show_url) or ('interaktiv' in show_url)) :
       if(maxEntries > 0) :
-	maxEntries += 1; # Compensate for entries not displayed
+  maxEntries += 1; # Compensate for entries not displayed
       continue
 
     show_title = str(link_element.text)
@@ -205,6 +205,10 @@ def DateMenu(sender, arg):
       dir.Append(VideoItem(showDetails[0], title = show_title, subtitle = showSubtitle, summary = showDetails[1], thumb = large_img_url))
       #dir.Append(WindowsMediaVideoItem(showDetails[0], title = show_title, subtitle = showSubtitle, summary = showDetails[1], thumb = large_img_url))
       #link = 'http://www.plexapp.com/player/silverlight.php?stream=' + String.Quote(showDetails[0], usePlus=False)
+      #link = 'http://www.plexapp.com/player/silverlight.php?stream=mms://a1014.v1252931.c125293.g.vm.akamaistream.net/7/1014/125293/v0001/wm.od.origin.zdf.de.gl-systemhaus.de/dach/zdf/11/05/110528_milow1_bah_vh.wmv'
+      #link = 'http://www.plexapp.com/player/player.php?url=http://wstreaming.zdf.de/zdf&clip=veryhigh/111106_atom_pla.asx'
+      #link = 'rtsp://a1966.v1252936.c125293.g.vq.akamaistream.net/7/1966/125293/v0001/mp4.od.origin.zdf.de.gl-systemhaus.de/none/zdf/11/10/111018_virus_afo_vh.mp4'
+      #dir.Append(VideoItem(link, show_title))
       #dir.Append(WebVideoItem(link, title = show_title, subtitle = showSubtitle, summary = showDetails[1], thumb = large_img_url))
     
   return dir
@@ -222,12 +226,63 @@ def LoadShowDetails(url):
     for elem in streamURLElements :
       url = str(elem.xpath('@href'))
 
-      if('asx' in url) :
-	streamURL = url;
-	if('veryhigh' in url): # Prefer high-quality version
-	  break
-	        
-    streamURL = streamURL.replace('[','').replace(']','').replace('\'','')
+      if('mov' in url) :
+        streamURL = url;
+        streamURL = streamURL.replace('[','').replace(']','').replace('\'','')
+        if('veryhigh' in url): # Prefer high-quality version
+          break      
+      
+    #streamURL = GetStreamUrlFromASX(streamURL)
+    streamURL = GetStreamUrlFromMOV(streamURL)
+
     return [streamURL, summaryText]
     
   return []
+
+'''
+load the plain MOV file and extracts the rtsp URL. (plex doesn't seem to be able to process these kind or MOV files)
+The following conent is expected to be the payload of the MOV file
+
+RTSPtext
+rtsp://a1966.v1252936.c125293.g.vq.akamaistream.net/7/1966/125293/v0001/mp4.od.origin.zdf.de.gl-systemhaus.de/none/zdf/11/10/111018_virus_afo_vh.mp4
+
+'''
+def GetStreamUrlFromMOV(url):
+  #Log("Load MOV file: " + url)
+  movFile = HTTP.Request(url)
+  #Log("MOV Content: " + movFile)
+
+  streamUrl = ''
+  # split by the 0A (LF) character, as whole MOV file is delivered as a single string object
+  lines = movFile.split(chr(10))
+
+  if ( "RTSPtext" in lines[0]):
+    streamUrl = lines[1]
+  
+  streamUrl = streamUrl.replace('[','').replace(']','').replace('\'','')
+  #Log("Url from MOV: " + streamUrl)
+  return streamUrl
+
+
+'''
+load the plain ASX file and extracts the mms URL. (plex doesn't seem to be able to process these kind or MOV files)
+The following content is expected to be the payload of the ASX file
+
+<ASX version ="3.0">
+    <Entry>
+        <Ref href="mms://a1014.v1252931.c125293.g.vm.akamaistream.net/7/1014/125293/v0001/wm.od.origin.zdf.de.gl-systemhaus.de/none/zdf/11/11/111106_atom_pla_vh.wmv"/>
+    </Entry>
+</ASX>
+
+'''
+def GetStreamUrlFromASX(url):
+  #Log("Load ASX file: " + url)
+  asxFile = XML.ElementFromURL(url, False, errors='ignore')
+  refElements = asxFile.xpath("//Ref")
+
+  if (len(refElements) > 0):
+    stream = str(refElements[0].xpath('@href'))
+    stream = stream.replace('[','').replace(']','').replace('\'','')
+    #Log("Url from ASX: " + stream)
+
+  return stream
