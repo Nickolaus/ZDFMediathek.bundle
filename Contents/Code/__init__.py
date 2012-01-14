@@ -22,10 +22,6 @@
 # TODO
 # - Support Bilderserien
 
-from PMS import *
-from PMS.Objects import *
-from PMS.Shortcuts import *
-
 ####################################################################################################
 
 # Number of videos displayed per show
@@ -52,9 +48,7 @@ CATEGORY = [
   ['Live', "http://www.zdf.de/ZDFmediathek/hauptnavigation/live?flash=off"]
 ]
 
-VIDEO_PREFIX = "/video/zdfmediathek"
-
-NAME = L('Title')
+NAME = 'ZDF Mediathek'
 
 ART = 'art-default.jpg'
 ICON = 'icon-default.png'
@@ -66,7 +60,7 @@ BASE_URL = "http://www.zdf.de"
 
 def Start():
 
-    Plugin.AddPrefixHandler(VIDEO_PREFIX, VideoMainMenu, L('VideoTitle'), ICON, ART)
+    Plugin.AddPrefixHandler("/video/zdfmediathek", VideoMainMenu, NAME, ICON, ART)
 
     Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
     Plugin.AddViewGroup("List", viewMode="List", mediaType="items")
@@ -74,6 +68,9 @@ def Start():
     MediaContainer.art = R(ART)
     MediaContainer.title1 = NAME
     DirectoryItem.thumb = R(ICON)
+
+    HTTP.CacheTime = CACHE_1HOUR
+
 
 def VideoMainMenu():
     dir = MediaContainer(viewGroup="List")
@@ -83,19 +80,19 @@ def VideoMainMenu():
     for show in SHOWS :
       show[1] = show[1] + "&teaserListIndex="+str(MAX_ENTRIES*2)
       if(len(show) > 2 and show[2] != '') :
-  if((len(show) > 3) and (show[3] != '')) :
-    dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2]), art = R(show[3])), arg = show[1]))
-  else :
-    dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2])), arg = show[1]))
+        if((len(show) > 3) and (show[3] != '')) :
+          dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2]), art = R(show[3])), arg = show[1]))
+        else :
+          dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2])), arg = show[1]))
       else :
-  dir.Append(Function(DirectoryItem(DateMenu, title = show[0]), arg = show[1]))
+        dir.Append(Function(DirectoryItem(DateMenu, title = show[0]), arg = show[1]))
 
     return dir
 
 
 def VideoSubMenu(sender, listUrl):
   dir = MediaContainer(viewGroup="List")
-  site = XML.ElementFromURL(listUrl, True)
+  site = HTML.ElementFromURL(listUrl)
   
   dateElements = site.xpath("//ul[@class='subNavi']/li/a")
   elementsCount = len(dateElements)
@@ -121,10 +118,10 @@ def ShowsMenu(sender, arg):
   dir = MediaContainer(viewGroup="InfoList")
   
   if(arg.startswith('http://')) :
-    site = XML.ElementFromURL(arg, True)
+    site = HTML.ElementFromURL(arg)
     #Log("DateMenu for " +arg)
   else :
-    site = XML.ElementFromURL(BASE_URL + arg, True)
+    site = HTML.ElementFromURL(BASE_URL + arg)
     #Log("DateMenu for " +BASE_URL + arg)
   
   showElements = site.xpath("//div[@class='beitragListe']//li")
@@ -158,10 +155,10 @@ def DateMenu(sender, arg):
   maxEntries = MAX_ENTRIES
 
   if(arg.startswith('http://')) :
-    site = XML.ElementFromURL(arg, True)
+    site = HTML.ElementFromURL(arg)
     #Log("DateMenu for " +arg)
   else :
-    site = XML.ElementFromURL(BASE_URL + arg, True)
+    site = HTML.ElementFromURL(BASE_URL + arg)
     #Log("DateMenu for " +BASE_URL + arg)
   
   showElements = site.xpath("//div[@class='beitragListe']//li")
@@ -182,7 +179,7 @@ def DateMenu(sender, arg):
     # (we could support Bilderserien in the future)
     if(('bilderserie' in show_url) or ('interaktiv' in show_url)) :
       if(maxEntries > 0) :
-  maxEntries += 1; # Compensate for entries not displayed
+        maxEntries += 1; # Compensate for entries not displayed
       continue
 
     show_title = str(link_element.text)
@@ -215,7 +212,7 @@ def DateMenu(sender, arg):
 
 
 def LoadShowDetails(url):
-  site = XML.ElementFromURL(BASE_URL + url, True, errors='ignore')
+  site = HTML.ElementFromURL(BASE_URL + url, errors='ignore')
   summaryElements = site.xpath("//p[@class='kurztext']")
   if (len(summaryElements) > 0):
     summaryElement = summaryElements[0]
@@ -249,7 +246,7 @@ rtsp://a1966.v1252936.c125293.g.vq.akamaistream.net/7/1966/125293/v0001/mp4.od.o
 '''
 def GetStreamUrlFromMOV(url):
   #Log("Load MOV file: " + url)
-  movFile = HTTP.Request(url)
+  movFile = HTTP.Request(url).content
   #Log("MOV Content: " + movFile)
 
   streamUrl = ''
@@ -277,11 +274,11 @@ The following content is expected to be the payload of the ASX file
 '''
 def GetStreamUrlFromASX(url):
   #Log("Load ASX file: " + url)
-  asxFile = XML.ElementFromURL(url, False, errors='ignore')
+  asxFile = XML.ElementFromURL(url, errors='ignore')
   refElements = asxFile.xpath("//Ref")
 
   if (len(refElements) > 0):
-    stream = str(refElements[0].xpath('@href'))
+    stream = refElements[0].get('href')
     stream = stream.replace('[','').replace(']','').replace('\'','')
     #Log("Url from ASX: " + stream)
 
