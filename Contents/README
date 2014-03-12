@@ -1,55 +1,27 @@
-ZDF Mediathek Plugin for Plex v1.1
+ZDF Mediathek Plugin for Plex v2.0
 ++++++++++++++++++++++++++++++++++++++++
 
-Dieses Plex Plugin bietet Zugriff auf die ZDF Mediathek.
-Es befindet sich noch in einem frühen Entwicklungsstadium
-und arbeitet noch sehr instabil.
-
-You can adjust __init__.py to add shortcuts to your favorit shows.
-Just add them to the SHOWS array. Examples are included.
-
-You can adjust how many videos per show should be displayed using the 
-variable MAX_ENRIES.
-ZDF displays 26 videos per show by default and links to more videos. In
-this plugin, you can specify how many videos should be displayed per show.
-The default is 50. Increasing this number might cause a significant delay
-to display the video list as more data has to be fetched from the server.
-
-You can also decide whether you want the plugin to display trailers. By
-default, trailers are not displayed.
-
-Also, "Interaktive Inhalte" and "Bilderserien" are not displayed.
-"Bilderserien" might be supported in a future version of the plugin.
-
-------------
-INSTALLATION
-------------
-
-Die Datei "ZDFMediathek.bundle" muss in diesen Ordner
-verschoben werden:
-
-(Benutzerordner)/Library/Application Support/Plex Media Server/Plug-ins/
+This Plex Plugin adds support for the German ZDF Mediathek.
 
 ----------
 CHANGE LOG
 ----------
+Version 2.0
+- complete refactored version based on the ZDFmediathek webservice.
+- URLService is now used to fetch the media files
+- Support for Bilderserien (Photo Albums) added.
 
 Version 1.1
 - fixed code to disassemble MOV file and retrieve rtsp stream (m4p file)
 
 Version 1.0
-------------------
 - version vom mplex (siehe http://wiki.plexapp.com/index.php/ZDFmediathek)
 
 Version 0.1 alpha
--------------------
 - erste Version von canbuffi (siehe http://forums.plexapp.com/index.php/topic/14208-release-zdf-mediathek-plugin-v01-alpha/page__view__findpost__p__84765)
 
 ---------
 ToDo
 ---------
-- fix issue 1 (only channel 'das erste' is listed)
-- fix issue 2 (only first page is listed in category listing)
-- integrate Tagesschau video-podcast for faster access
-- integrate Tagesthemen video-podcast for faster access
 - make quality of the streams selectable (flash/silverlight/pure h264, high/medium/low)
+- Support for Live TV

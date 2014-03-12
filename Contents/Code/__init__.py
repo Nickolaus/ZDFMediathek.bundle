@@ -1,7 +1,10 @@
+﻿import re, datetime
+from string import ascii_uppercase
 # +++++ ZDF Mediathek Plugin for Plex +++++
 #
-# Version 1.1
+# Version 2.0
 #
+# Version 1.1
 # (c) 2011 by Robert Kleinschmager (http://www.kleinschmager.net)
 # Initial version based on code by Sebastian Majstorovic and Marcel Dischinger (http://www.digital-tea.net)
 # 
@@ -20,33 +23,34 @@
 # Artwork (folder 'Resources'): (c) ZDF
 
 # TODO
-# - Support Bilderserien
+# - Live TV support
 
 ####################################################################################################
 
-# Number of videos displayed per show
-MAX_ENTRIES = 50 
-# Do not display trailers
-FILTER_TRAILERS = True
-
-# These shows act as shortcuts / favorites
-# You can add your favorite show using the links at
-#    http://www.zdf.de/ZDFmediathek/hauptnavigation/sendung-a-bis-z?flash=off
-# Format: ['title', 'URL', 'ShowIcon', 'ShowArtwork']
-SHOWS = [
-# Examples: (note: artwork is not included!)
-#  ['Heute Show', "http://www.zdf.de/ZDFmediathek/kanaluebersicht/aktuellste/760014?bc=saz;saz2&flash=off", 'heuteshow.png'],
-#  ['History', "http://www.zdf.de/ZDFmediathek/kanaluebersicht/aktuellste/496?bc=saz;saz2&flash=off", 'history.png'],
-#  ['Leschs Kosmos', "http://www.zdf.de/ZDFmediathek/kanaluebersicht/aktuellste/925180?bc=saz;saz3&flash=off", 'leschskosmos.png'],
-#  ['Neues aus der Anstalt', "http://www.zdf.de/ZDFmediathek/kanaluebersicht/aktuellste/508?bc=saz;saz0&flash=off", 'neuesausderanstalt.png'],
-#  ['Terra X', "http://www.zdf.de/ZDFmediathek/kanaluebersicht/aktuellste/330?bc=saz;saz6&flash=off", 'terrax.png']
+THUMBNAIL = [
+  '946x532',
+  '644x363'
 ]
 
-CATEGORY = [
-  ['Sendungen A-Z', "http://www.zdf.de/ZDFmediathek/hauptnavigation/sendung-a-bis-z?flash=off"],
-  ['Sendungen der letzten 7 Tage', "http://www.zdf.de/ZDFmediathek/hauptnavigation/sendung-verpasst?flash=off"],
-  ['Live', "http://www.zdf.de/ZDFmediathek/hauptnavigation/live?flash=off"]
+SENDUNGENAZ = [
+  ['ABC', 'A', 'C'],
+  ['DEF', 'D', 'F'],
+  ['GHI', 'G', 'I'],
+  ['JKL', 'J', 'L'],
+  ['MNO', 'M', 'O'],
+  ['PQRS', 'P', 'S'],
+  ['TUV', 'T', 'V'],
+  ['WXYZ', 'W', 'Z'],
+  ['0-9', '0-9', '0-9']
 ]
+
+ZDF_RUBRIKEN         = 'http://www.zdf.de/ZDFmediathek/xmlservice/web/rubriken'
+ZDF_THEMEN           = 'http://www.zdf.de/ZDFmediathek/xmlservice/web/themen'
+ZDF_MEISTGESEHEN     = 'http://www.zdf.de/ZDFmediathek/xmlservice/web/meistGesehen?id=_GLOBAL&maxLength=10&offset=%s'
+ZDF_SENDUNGEN_AZ     = 'http://www.zdf.de/ZDFmediathek/xmlservice/web/sendungenAbisZ?characterRangeStart=%s&characterRangeEnd=%s&detailLevel=2'
+ZDF_SENDUNG_VERPASST = 'http://www.zdf.de/ZDFmediathek/xmlservice/web/sendungVerpasst?enddate=%s&maxLength=50&startdate=%s&offset=%s'
+ZDF_SENDUNG          = 'http://www.zdf.de/ZDFmediathek/xmlservice/web/aktuellste?id=%s&maxLength=25&offset=%s'
+ZDF_BEITRAG          = 'http://www.zdf.de/ZDFmediathek/beitrag/%s/%s'
 
 NAME = 'ZDF Mediathek'
 
@@ -59,227 +63,167 @@ BASE_URL = "http://www.zdf.de"
 ####################################################################################################
 
 def Start():
-
-    Plugin.AddPrefixHandler("/video/zdfmediathek", VideoMainMenu, NAME, ICON, ART)
-
     Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
     Plugin.AddViewGroup("List", viewMode="List", mediaType="items")
 
-    MediaContainer.art = R(ART)
-    MediaContainer.title1 = NAME
-    DirectoryItem.thumb = R(ICON)
+    ObjectContainer.art        = R(ART)
+    ObjectContainer.title1     = NAME
+    ObjectContainer.view_group = "InfoList"
+    DirectoryItem.thumb        = R(ICON)
 
     HTTP.CacheTime = CACHE_1HOUR
 
-
+@handler('/video/zdfmediathek', NAME, art = ART, thumb = ICON)
 def VideoMainMenu():
-    dir = MediaContainer(viewGroup="List")
-
-    for page in CATEGORY :
-      dir.Append(Function(DirectoryItem(VideoSubMenu, title = page[0]), listUrl = page[1]))
-    for show in SHOWS :
-      show[1] = show[1] + "&teaserListIndex="+str(MAX_ENTRIES*2)
-      if(len(show) > 2 and show[2] != '') :
-        if((len(show) > 3) and (show[3] != '')) :
-          dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2]), art = R(show[3])), arg = show[1]))
-        else :
-          dir.Append(Function(DirectoryItem(DateMenu, title = show[0], thumb = R(show[2])), arg = show[1]))
-      else :
-        dir.Append(Function(DirectoryItem(DateMenu, title = show[0]), arg = show[1]))
-
-    return dir
-
-
-def VideoSubMenu(sender, listUrl):
-  dir = MediaContainer(viewGroup="List")
-  site = HTML.ElementFromURL(listUrl)
-  
-  dateElements = site.xpath("//ul[@class='subNavi']/li/a")
-  elementsCount = len(dateElements)
-  for i in range(0, elementsCount):
-    dateElement = dateElements[i]
-    url = str(dateElement.xpath('@href')[0])
-    date = dateElement.text
-    description = date[2:]
+    oc = ObjectContainer(view_group="List")
     
-    # Remove podcasts directory
-    if('Podcasts' in description) :
-      continue
+    oc.add(DirectoryObject(key=Callback(SendungVerpasst, name="Sendung Verpasst"), title="Sendung Verpasst"))
+    oc.add(DirectoryObject(key=Callback(SendungenAZ, name="Sendungen A-Z"), title="Sendungen A-Z"))
+    oc.add(DirectoryObject(key=Callback(RubrikenThemen, name="Rubriken"), title="Rubriken"))
+    oc.add(DirectoryObject(key=Callback(RubrikenThemen, name="Themen"), title="Themen"))
+    oc.add(DirectoryObject(key=Callback(Sendung, title="Meist Gesehen", assetId="MEISTGESEHEN"), title="Meist Gesehen"))
     
-    if('sendung-a-bis-z' in listUrl) :
-      dir.Append(Function(DirectoryItem(ShowsMenu, title = description), arg = url))
-    else :
-      dir.Append(Function(DirectoryItem(DateMenu, title = description), arg = url))
-    
-  return dir
+    return oc
 
+@route('/video/zdfmediathek/sendungverpasst')
+def SendungVerpasst(name):
+  oc = ObjectContainer(title2=name, view_group="List")
+  day = datetime.date.today()
+  for n in range(7):
+    oc.add(DirectoryObject(key=Callback(Sendung, title=day.strftime("%d.%m.%y"), assetId="VERPASST_"+day.strftime("%d%m%y")), title=day.strftime("%d.%m.%y")))
+    day = day + datetime.timedelta(-1)
+  return oc
 
-def ShowsMenu(sender, arg):
-  dir = MediaContainer(viewGroup="InfoList")
-  
-  if(arg.startswith('http://')) :
-    site = HTML.ElementFromURL(arg)
-    #Log("DateMenu for " +arg)
-  else :
-    site = HTML.ElementFromURL(BASE_URL + arg)
-    #Log("DateMenu for " +BASE_URL + arg)
-  
-  showElements = site.xpath("//div[@class='beitragListe']//li")
-  elementsCount = len(showElements)
-  for i in range(0, elementsCount):
-
-    showElement = showElements[i]
-    try:
-      link_element = showElement.xpath(".//b/a")[0]
-    except IndexError :
-      continue
-    show_url = str(link_element.xpath('@href')[0]) + "&teaserListIndex="+str(MAX_ENTRIES*2)
-    show_title = str(link_element.text)
-    subtitleElements = showElement.xpath(".//p[@class='grey']/a")
-    showSubtitle = subtitleElements[len(subtitleElements)-1].text
-    
-    img_url = str(showElement.xpath(".//img")[0].xpath("@src")[0])
-    img_url_parts = img_url.split("/")
-    img_url_parts.pop()
-    large_img_url = "/".join(img_url_parts)
-    large_img_url = BASE_URL + large_img_url.replace("94x65", "485x273")
-    
-    dir.Append(Function(DirectoryItem(DateMenu, title = show_title, subtitle = showSubtitle, thumb = large_img_url), arg = show_url)) 
-  
-  return dir
-
-
-def DateMenu(sender, arg):
-  dir = MediaContainer(viewGroup="InfoList")
-
-  maxEntries = MAX_ENTRIES
-
-  if(arg.startswith('http://')) :
-    site = HTML.ElementFromURL(arg)
-    #Log("DateMenu for " +arg)
-  else :
-    site = HTML.ElementFromURL(BASE_URL + arg)
-    #Log("DateMenu for " +BASE_URL + arg)
-  
-  showElements = site.xpath("//div[@class='beitragListe']//li")
-  elementsCount = len(showElements)
-  for i in range(0, elementsCount):
-
-    if((maxEntries > 0) and (i >= maxEntries)) :
-      break
-
-    showElement = showElements[i]
-    try:
-      link_element = showElement.xpath(".//b/a")[0]
-    except IndexError :
-      continue
-    show_url = str(link_element.xpath('@href')[0])
-
-    # We do not support Bilderserien or interaktiveInhalte 
-    # (we could support Bilderserien in the future)
-    if(('bilderserie' in show_url) or ('interaktiv' in show_url)) :
-      if(maxEntries > 0) :
-        maxEntries += 1; # Compensate for entries not displayed
-      continue
-
-    show_title = str(link_element.text)
-    
-    # Filter out "Vorschau"/"Trailer" videos 
-    if(FILTER_TRAILERS and (('Vorschau' in show_title) or ('Trailer' in show_title))) :
-      continue
-    
-    subtitleElements = showElement.xpath(".//p[@class='grey']/a")
-    showSubtitle = subtitleElements[len(subtitleElements)-1].text
-    
-    img_url = str(showElement.xpath(".//img")[0].xpath("@src")[0])
-    img_url_parts = img_url.split("/")
-    img_url_parts.pop()
-    large_img_url = "/".join(img_url_parts)
-    large_img_url = BASE_URL + large_img_url.replace("94x65", "485x273")
-    
-    showDetails = LoadShowDetails(show_url)
-    if (len(showDetails) > 0):
-      dir.Append(VideoItem(showDetails[0], title = show_title, subtitle = showSubtitle, summary = showDetails[1], thumb = large_img_url))
-      #dir.Append(WindowsMediaVideoItem(showDetails[0], title = show_title, subtitle = showSubtitle, summary = showDetails[1], thumb = large_img_url))
-      #link = 'http://www.plexapp.com/player/silverlight.php?stream=' + String.Quote(showDetails[0], usePlus=False)
-      #link = 'http://www.plexapp.com/player/silverlight.php?stream=mms://a1014.v1252931.c125293.g.vm.akamaistream.net/7/1014/125293/v0001/wm.od.origin.zdf.de.gl-systemhaus.de/dach/zdf/11/05/110528_milow1_bah_vh.wmv'
-      #link = 'http://www.plexapp.com/player/player.php?url=http://wstreaming.zdf.de/zdf&clip=veryhigh/111106_atom_pla.asx'
-      #link = 'rtsp://a1966.v1252936.c125293.g.vq.akamaistream.net/7/1966/125293/v0001/mp4.od.origin.zdf.de.gl-systemhaus.de/none/zdf/11/10/111018_virus_afo_vh.mp4'
-      #dir.Append(VideoItem(link, show_title))
-      #dir.Append(WebVideoItem(link, title = show_title, subtitle = showSubtitle, summary = showDetails[1], thumb = large_img_url))
-    
-  return dir
-
-
-def LoadShowDetails(url):
-  site = HTML.ElementFromURL(BASE_URL + url, errors='ignore')
-  summaryElements = site.xpath("//p[@class='kurztext']")
-  if (len(summaryElements) > 0):
-    summaryElement = summaryElements[0]
-    summaryText = summaryElement.text
-    
-    streamURLElements = site.xpath("//ul[@class='dslChoice']/li/a")
-    
-    for elem in streamURLElements :
-      url = str(elem.xpath('@href'))
-
-      if('mov' in url) :
-        streamURL = url;
-        streamURL = streamURL.replace('[','').replace(']','').replace('\'','')
-        if('veryhigh' in url): # Prefer high-quality version
-          break      
+####################################################################################################
+@route('/video/zdfmediathek/rubrikenthemen')
+def RubrikenThemen(name):
+  oc = ObjectContainer(title2=name, view_group="List")
+  if(name == 'Rubriken'):
+    content = XML.ElementFromURL(ZDF_RUBRIKEN, cacheTime=CACHE_1HOUR)
+  elif(name == 'Themen'):
+    content = XML.ElementFromURL(ZDF_THEMEN, cacheTime=CACHE_1HOUR)
+  else:
+    raise Ex.MediaNotAvailable
+  teasers = content.xpath('//teaserlist/teasers/teaser')
+  for teaser in teasers:
+      type = teaser.xpath('./type')[0].text
+      if(type != 'rubrik' and type != 'topthema' and type != 'thema'):
+        Log('RubrikenThemen: Unsupported type ' + type)
+        continue
       
-    #streamURL = GetStreamUrlFromASX(streamURL)
-    streamURL = GetStreamUrlFromMOV(streamURL)
-
-    return [streamURL, summaryText]
+      for res in THUMBNAIL:
+        thumb = teaser.xpath('./teaserimages/teaserimage[@key="%s"]' % (res))[0].text
+        if thumb.find('fallback') == -1:
+          break
+      
+      title = teaser.xpath('./information/title')[0].text
+      summary = teaser.xpath('./information/detail')[0].text
+      assetId = teaser.xpath('./details/assetId')[0].text
+      
+      tagline = None
+      if(type == 'topthema'):
+        title = 'Topthema - %s' % (title)
+        tagline = 'Topthema'
+      oc.add(DirectoryObject(key=Callback(Sendung, title=title, assetId=assetId), title=title, thumb=thumb, summary=summary, tagline=tagline))
+  return oc
+	
+####################################################################################################
+@route('/video/zdfmediathek/sendungenaz')
+def SendungenAZ(name):
+    oc = ObjectContainer(title2=name, view_group="List")
     
-  return []
+    # A to Z
+    for page in SENDUNGENAZ:
+        oc.add(DirectoryObject(key=Callback(SendungenAZList, char=page[0]), title=page[0]))
+    
+    return oc
 
-'''
-load the plain MOV file and extracts the rtsp URL. (plex doesn't seem to be able to process these kind or MOV files)
-The following conent is expected to be the payload of the MOV file
-
-RTSPtext
-rtsp://a1966.v1252936.c125293.g.vq.akamaistream.net/7/1966/125293/v0001/mp4.od.origin.zdf.de.gl-systemhaus.de/none/zdf/11/10/111018_virus_afo_vh.mp4
-
-'''
-def GetStreamUrlFromMOV(url):
-  #Log("Load MOV file: " + url)
-  movFile = HTTP.Request(url).content
-  #Log("MOV Content: " + movFile)
-
-  streamUrl = ''
-  # split by the 0A (LF) character, as whole MOV file is delivered as a single string object
-  lines = movFile.split(chr(10))
-
-  if ( "RTSPtext" in lines[0]):
-    streamUrl = lines[1]
+####################################################################################################
+@route('/video/zdfmediathek/sendungenaz/{char}')
+def SendungenAZList(char):
+  oc = ObjectContainer(title2=char, view_group="List")
+  for page in SENDUNGENAZ:
+    if page[0] != char:
+      continue
+    content = XML.ElementFromURL(ZDF_SENDUNGEN_AZ % (page[1], page[2]), cacheTime=CACHE_1HOUR)
+    teasers = content.xpath('//teaserlist/teasers/teaser')
+    for teaser in teasers:
+      for res in THUMBNAIL:
+        thumb = teaser.xpath('./teaserimages/teaserimage[@key="%s"]' % (res))[0].text
+        if thumb.find('fallback') == -1:
+          break
+      
+      title = teaser.xpath('./information/title')[0].text
+      summary = teaser.xpath('./information/detail')[0].text
+      assetId = teaser.xpath('./details/assetId')[0].text
+      oc.add(DirectoryObject(key=Callback(Sendung, title=title, assetId=assetId), title=title, thumb=thumb, summary=summary))
   
-  streamUrl = streamUrl.replace('[','').replace(']','').replace('\'','')
-  #Log("Url from MOV: " + streamUrl)
-  return streamUrl
+  if len(oc) == 0:
+    return MessageContainer("Empty", "There aren't any speakers whose name starts with " + char)
 
+  return oc
 
-'''
-load the plain ASX file and extracts the mms URL. (plex doesn't seem to be able to process these kind or MOV files)
-The following content is expected to be the payload of the ASX file
+@route('/video/zdfmediathek/sendung/{assetId}', allow_sync = True)
+def Sendung(title, assetId, offset=0):
+  oc = ObjectContainer(title2=title.decode(encoding="utf-8", errors="ignore"), view_group="InfoList")
+  if(assetId == 'MEISTGESEHEN'):
+    maxLength = 10
+    content = XML.ElementFromURL(ZDF_MEISTGESEHEN % (offset), cacheTime=CACHE_1HOUR)
+  elif(assetId.find('VERPASST_') != -1):
+    maxLength = 50
+    d = re.search('VERPASST_([0-9]{1,6})', assetId)
+    if(d == None):
+      return oc
+    day = d.group(1)
+    content = XML.ElementFromURL(ZDF_SENDUNG_VERPASST % (day, day, offset), cacheTime=CACHE_1HOUR)
+  else:
+    maxLength = 25
+    content = XML.ElementFromURL(ZDF_SENDUNG % (str(assetId), offset), cacheTime=CACHE_1HOUR)
+  more = content.xpath('//teaserlist/additionalTeaser')[0].text == 'true'
+  teasers = content.xpath('//teaserlist/teasers/teaser')
+  for teaser in teasers:
+      type = teaser.xpath('./type')[0].text
+      for res in THUMBNAIL:
+        thumb = teaser.xpath('./teaserimages/teaserimage[@key="%s"]' % (res))[0].text
+        if thumb.find('fallback') == -1:
+          break
+      
+      ttitle = teaser.xpath('./information/title')[0].text
+      tsummary = teaser.xpath('./information/detail')[0].text
+      tassetId = teaser.xpath('./details/assetId')[0].text
+      if(type == 'video'):
+        show = teaser.xpath('./details/originChannelTitle')[0].text
+        if(show != title):
+          ttitle = '%s - %s' % (show, ttitle)
+        date = Datetime.ParseDate(teaser.xpath('./details/airtime')[0].text).date()
+        duration = CalculateDuration(teaser.xpath('./details/length')[0].text)
+        oc.add(VideoClipObject(url=ZDF_BEITRAG % ('video', tassetId), title=ttitle, originally_available_at=date, summary=tsummary, thumb=thumb, duration=duration))
+      elif(type == 'thema' or type == 'sendung'):
+        oc.add(DirectoryObject(key=Callback(Sendung, title=ttitle, assetId=tassetId), title=ttitle, thumb=thumb, summary=tsummary))
+      elif(type == 'imageseries_informativ'):
+        oc.add(PhotoAlbumObject(url=ZDF_BEITRAG % ('bilderserie', tassetId), title=ttitle, summary=tsummary, thumb=thumb))
+  #Somehow the webservice does not support an offset over 100	
+  if more and int(offset) + maxLength <= 100:
+    oc.add(NextPageObject(key=Callback(Sendung, title=title, assetId=assetId, offset=str(int(offset)+maxLength)), title=str("Weitere Beiträge").decode('utf-8', 'strict'), summary=None, thumb="more.png"))
+  return oc
 
-<ASX version ="3.0">
-    <Entry>
-        <Ref href="mms://a1014.v1252931.c125293.g.vm.akamaistream.net/7/1014/125293/v0001/wm.od.origin.zdf.de.gl-systemhaus.de/none/zdf/11/11/111106_atom_pla_vh.wmv"/>
-    </Entry>
-</ASX>
-
-'''
-def GetStreamUrlFromASX(url):
-  #Log("Load ASX file: " + url)
-  asxFile = XML.ElementFromURL(url, errors='ignore')
-  refElements = asxFile.xpath("//Ref")
-
-  if (len(refElements) > 0):
-    stream = refElements[0].get('href')
-    stream = stream.replace('[','').replace(']','').replace('\'','')
-    #Log("Url from ASX: " + stream)
-
-  return stream
+####################################################################################################
+def CalculateDuration(timecode):
+  milliseconds = 0
+  hours        = 0
+  minutes      = 0
+  seconds      = 0
+  d = re.search('([0-9]{1,2}) min', timecode)
+  if(None != d):
+    minutes = int( d.group(1) )
+  else:
+    d = re.search('([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}).([0-9]{1,3})', timecode)
+    if(None != d):
+      hours = int ( d.group(1) )
+      minutes = int ( d.group(2) )
+      seconds = int ( d.group(3) )
+      milliseconds = int ( d.group(4) )
+  milliseconds += hours * 60 * 60 * 1000
+  milliseconds += minutes * 60 * 1000
+  milliseconds += seconds * 1000
+  return milliseconds
